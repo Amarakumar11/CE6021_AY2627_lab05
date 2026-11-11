@@ -14,8 +14,6 @@ in and returns the result out:
   7. threshold_response(response)         weak responses set to zero
   8. find_peaks(thresh_response)          one (row, col) per corner
   9. det_coords(image)                    put the steps together
-
-Run evaluate_lab05.py after each step to see your progress.
 """
 import numpy as np
 from scipy import signal
@@ -30,6 +28,7 @@ CHECKERBOARD_IMAGE_URL = (
     "https://github.com/tonyscan6003/etivities/blob/main/"
     "10x10_checkered_board.png?raw=true"
 )
+
 
 class HarrisCorner:
     """Harris Corner Detector, built from the second-moment matrix of the
@@ -66,104 +65,71 @@ class HarrisCorner:
         self.coords          = None
 
     def gaussian_kernel(self):
-        """Step 1 — a 2D Gaussian weighting window sized from self.sigma.
-
-        Returns:
-            np.ndarray: (k, k) 2D Gaussian kernel, k = int(6 * sigma + 1).
-        """
-        raise NotImplementedError("Implement this method")
+        """Return a 2D Gaussian weighting window sized from self.sigma."""
+        k = int(6 * self.sigma + 1)
+        half = (k - 1) // 2
+        x = np.arange(-half, half + 1)
+        g = np.exp(-(x ** 2) / (2 * self.sigma ** 2)) / (
+            self.sigma * np.sqrt(2 * np.pi)
+        )
+        return np.outer(g, g)
 
     def compute_gradients(self, image):
-        """Step 2 — Sobel gradients of the image in x and y.
-
-        Args:
-            image (np.ndarray): 2D greyscale image.
-
-        Returns:
-            (Ix, Iy): each a 2D array the same shape as image.
-        """
-        raise NotImplementedError("Implement this method")
+        """Return Sobel x and y gradients using symmetric boundary handling."""
+        kernel_x = np.array([
+            [-1, 0, 1],
+            [-2, 0, 2],
+            [-1, 0, 1],
+        ])
+        kernel_y = np.array([
+            [1, 2, 1],
+            [0, 0, 0],
+            [-1, -2, -1],
+        ])
+        Ix = signal.convolve2d(image, kernel_x, mode='same', boundary='symm')
+        Iy = signal.convolve2d(image, kernel_y, mode='same', boundary='symm')
+        return Ix, Iy
 
     def gradient_products(self, Ix, Iy):
-        """Step 3 — element-wise products of the gradients.
-
-        Args:
-            Ix, Iy (np.ndarray): gradients from compute_gradients().
-
-        Returns:
-            (Ixx, Iyy, Ixy): Ix*Ix, Iy*Iy, Ix*Iy — each the same shape as Ix.
-        """
-        raise NotImplementedError("Implement this method")
+        """Return the element-wise products Ix², Iy², and Ix·Iy."""
+        return Ix * Ix, Iy * Iy, Ix * Iy
 
     def smooth_products(self, Ixx, Iyy, Ixy):
-        """Step 4 — Gaussian-weighted sum of each gradient product over a
-        local window (the entries of the second-moment matrix M).
-
-        Args:
-            Ixx, Iyy, Ixy (np.ndarray): gradient products from gradient_products().
-
-        Returns:
-            (A, B, C): the Gaussian-weighted Ixx, Iyy, Ixy — same shape as Ixx.
-        """
-        raise NotImplementedError("Implement this method")
+        """Return Gaussian-weighted sums of the gradient products."""
+        window = self.gaussian_kernel()
+        A = signal.convolve2d(Ixx, window, mode='same', boundary='symm')
+        B = signal.convolve2d(Iyy, window, mode='same', boundary='symm')
+        C = signal.convolve2d(Ixy, window, mode='same', boundary='symm')
+        return A, B, C
 
     def det_and_trace(self, A, B, C):
-        """Step 5 — the determinant and trace of M = [[A, C], [C, B]] at
-        every pixel.
-
-        Args:
-            A, B, C (np.ndarray): the smoothed products from smooth_products().
-
-        Returns:
-            (det, trace): Det(M) = A*B - C^2 and Trace(M) = A + B, same shape as A.
-        """
-        raise NotImplementedError("Implement this method")
+        """Return the determinant and trace of M = [[A, C], [C, B]]."""
+        det = A * B - C ** 2
+        trace = A + B
+        return det, trace
 
     def harris_response(self, det, trace):
-        """Step 6 — the Harris response R = Det(M) - alpha * Trace(M)^2.
-
-        Args:
-            det, trace (np.ndarray): from det_and_trace().
-
-        Returns:
-            np.ndarray: the response map, same shape as det.
-        """
-        raise NotImplementedError("Implement this method")
+        """Return R = Det(M) − alpha · Trace(M)²."""
+        return det - self.alpha * trace ** 2
 
     def threshold_response(self, response):
-        """Step 7 — keep only the strong responses: every value not above
-        self.threshold_val is set to 0.
-
-        Args:
-            response (np.ndarray): response map from harris_response().
-
-        Returns:
-            np.ndarray: the thresholded response map, same shape as response.
-        """
-        raise NotImplementedError("Implement this method")
+        """Keep values above self.threshold_val and set all others to zero."""
+        return np.where(response > self.threshold_val, response, 0)
 
     def find_peaks(self, thresh_response):
-        """Step 8 — one coordinate per corner: the local maxima of the
-        thresholded response, at least self.min_distance pixels apart.
-
-        Args:
-            thresh_response (np.ndarray): from threshold_response().
-
-        Returns:
-            np.ndarray: shape (N, 2) array of (row, col) coordinates.
-        """
-        raise NotImplementedError("Implement this method")
+        """Return peak coordinates as (row, col), separated by min_distance."""
+        return peak_local_max(
+            thresh_response,
+            min_distance=self.min_distance,
+        )
 
     def det_coords(self, image):
-        """Step 9 — run the whole pipeline using the methods above.
-
-        Stores each intermediate result on self so they can be displayed
-        afterwards.
-
-        Args:
-            image (np.ndarray): 2D greyscale image.
-
-        Returns:
-            np.ndarray: shape (N, 2) array of (row, col) corner coordinates.
-        """
-        raise NotImplementedError("Implement this method")
+        """Run the full Harris pipeline and store each intermediate result."""
+        self.grad_x, self.grad_y = self.compute_gradients(image)
+        self.grad_products = self.gradient_products(self.grad_x, self.grad_y)
+        self.smoothed = self.smooth_products(*self.grad_products)
+        self.det, self.trace = self.det_and_trace(*self.smoothed)
+        self.corner_response = self.harris_response(self.det, self.trace)
+        self.thresh_response = self.threshold_response(self.corner_response)
+        self.coords = self.find_peaks(self.thresh_response)
+        return self.coords
